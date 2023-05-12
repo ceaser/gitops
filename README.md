@@ -117,10 +117,10 @@ kubectl get pods
 kind delete cluster
 ```
 
-### Testing with Minikube Testing
-You'll need a Kubernetes cluster v1.20 or newer with LoadBalacner support. You will need 2 CPUs and 8GB of memory.
+### Setup a remote cluster or Minikube
+You'll need a Kubernetes cluster v1.20 or newer with LoadBalacner support. For minikube, you will need 2 CPUs and 8GB of memory. You can skip steps 1 and 2 if you are using another cluster.
 
-1. Set the hypervisor driver. Linux you can use KVM.
+1. Set the hypervisor driver. On Linux, you can use KVM.
 
 ```bash
 minikube config set driver kvm2
@@ -131,12 +131,32 @@ minikube config set driver kvm2
 minikube start --memory=8192 --cpus=2 --kubernetes-version=v1.23.17
 ```
 
-3. Run tests against a new install Git server and Flux configuration
+3. Verify the cluster satisfies the prerequisites
 ```bash
-./test/bats/bin/bats test/gitsrv.bats test/flux.bats
+flux check --pre
 ```
 
-## Flux Overview and Common Commands
+4. Fork and create a new repository
+```bash
+git clone https://github.com/<YOUR-USERNAME>/gitops
+cd gitops
+```
+
+5. Bootstrap the cluster. You can modify the branch and path arguments to fit your requirements. See Flux [Ways of structuring your repositories](https://fluxcd.io/flux/guides/repository-structure/) to learn more about organizing repositories. There are many options available when bootstrapping Flux. To list all the available options run `flux bootstrap git --help`
+
+The following command will require an ssh-agent. After you run the command, Flux will generate a public key you'll need to add as a deploy key with write access on your GitHub repository. On GitHub, go to Settings > Deploy keys. Click on `Add deploy key`, check `Allow write access` and paste the Flux public key and click `Add Key`.
+
+```bash
+flux bootstrap git \
+  --author-email=<YOUR-EMAIL> \
+  --url=ssh://git@github.com/<YOUR-USERNAME>/gitops \
+  --branch=main \
+  --path=clusters/my-cluster
+```
+
+Once Flux has access to your repository, it will monitor the Git repository for changes. You can place Kubernetes manifest YAMLs inside the `clusters/my-cluster` directory and Flux will reconcile them on your cluster.
+
+## Common Flux Commands
 
 Flux is a GitOps Kubernetes operator that watches your Git repository and automatically synchronizes the desired state of your Kubernetes resources with the actual state in your cluster.
 
