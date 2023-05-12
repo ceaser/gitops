@@ -7,6 +7,12 @@ This repository uses [Flux](https://fluxcd.io/), a [GitOps](https://www.weave.wo
 
 This README will guide you through installation and local testing with Kind and Minikube and provide an overview of Flux and its common commands.
 
+## What is GitOps
+GitOps is a way to do Continuous Delivery. It works by using Git as a source of truth for declarative infrastructure instead of an imperative paradigm that rely on the execution of a script, which can leave the infrastructure in an unknown state over time. In short, this means using `git push` instead of `kubectl apply/delete` or `helm install/upgrade`.
+
+## What is Progressive Delivery
+Progressive delivery is an umbrella term for advanced deployment patterns like canaries, feature flags and A/B testing. Progressive delivery techniques are used to reduce the risk of introducing a new software version in production.
+
 ## Flux Workflow
 [Flux](https://fluxcd.io/) takes instructions from Git, the single source of truth. Users create Git commits and push them to a repository Flux is monitoring. The Git repository Flux is monitoring is configured in Kubernetes using a [GitRepository](https://fluxcd.io/flux/components/source/gitrepositories/) Custom Resource, which is a [Source Controller](https://fluxcd.io/flux/components/source/).
 
@@ -154,3 +160,20 @@ List all the Kubernetes resources managed by Flux
 ```bash
 flux tree kustomization flux-system
 ```
+
+
+## Writing Tests
+
+Test are written in Bash using [BATS](https://github.com/bats-core/bats-core)
+
+You can learn more about BATS by going through the [tutorial](https://bats-core.readthedocs.io/en/stable/tutorial.html).
+
+The repository uses several support test libraries to simplify writing assertions and error messages.
+
+[detik](https://github.com/bats-core/bats-detik#working-with-kubectl-or-oc-commands) is used to check the results of various Kubernetes resources.
+
+[bats-assert]( https://github.com/bats-core/bats-assert#full-assertion-api) improves the output of the assertion and refute statements and adds additional assertions beyond the general status check
+
+[bats-file](https://github.com/bats-core/bats-file#usage) Adds additional assertions for directories and files.
+
+[bats-mock](https://github.com/grayhemp/bats-mock#usage) Adds support for creating mocks while testing Bash scripts that use external programs.
