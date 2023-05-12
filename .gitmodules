@@ -6,10 +6,10 @@
 	url = https://github.com/bats-core/bats-assert.git
 [submodule "test/test_helper/bats-detik"]
 	path = test/test_helper/bats-detik
-	url = git@github.com:bats-core/bats-detik.git
+	url = https://github.com/bats-core/bats-detik.git
 [submodule "test/test_helper/bats-file"]
 	path = test/test_helper/bats-file
-	url = git@github.com:bats-core/bats-file.git
+	url = https://github.com/bats-core/bats-file.git
 [submodule "test/test_helper/bats-support"]
 	path = test/test_helper/bats-support
 	url = https://github.com/bats-core/bats-support.git
