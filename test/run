@@ -110,11 +110,14 @@ create_git_repository() {
     #green "git pull"
     #git pull
     green "replace gitsrv git repository"
+    set +e
     rm -rf $REMOTE_GIT_DIR
     if [[ "$?" -eq 0 ]]; then
+      set -e
       cp -r $GIT_DIR/.git $KIND_GIT_DIR
       chown -R 1000:1000 $REMOTE_GIT_DIR
     else
+      set -e
       #sudo -k # kill the session when testing dangerous command
       green "sudo bash -c \ \n  \"rm -rf $REMOTE_GIT_DIR \ \n  && cp -r $GIT_DIR/.git $KIND_GIT_DIR \ \n  && chown -R 1000:1000 $REMOTE_GIT_DIR\""
       sudo bash -c "rm -rf $REMOTE_GIT_DIR && cp -r $GIT_DIR/.git $KIND_GIT_DIR && chown -R 1000:1000 $REMOTE_GIT_DIR"
