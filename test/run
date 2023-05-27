@@ -1,0 +1,219 @@
+#!/usr/bin/env sh
+
+[[ -z "$OPS_NS" ]] && OPS_NS="ops"
+[[ -z "$CLIENT_NS" ]] && CLIENT_NS="client"
+[[ -z "$KIND_IMAGE" ]] && KIND_IMAGE="kindest/node:v1.23.17@sha256:e5fd1d9cd7a9a50939f9c005684df5a6d145e8d695e78463637b79464292e66c"
+
+green() {
+    echo -e "\033[32m$1\033[0m" >&2
+}
+
+red() {
+    echo -e "\033[31m$1\033[0m" >&2
+}
+
+example_usage() {
+    echo "Example usage:"
+    echo "    $0 -c" echo "    $0 -x" echo "    $0 -f '^kind clusters'"
+    echo "    $0 -b $BRANCH -n $CLUSTER -u $GIT_REPO"
+}
+
+usage() {
+    echo
+    echo "$0 start the tests"
+    echo
+    echo "Usage:"
+    echo "    $0"
+    echo
+    example_usage
+    echo
+    echo "Flags:"
+    echo "    -h    display help"
+    echo "    -f    filter which tests to run"
+    echo "    -b    branch to use for testing"
+    echo "    -n    cluster name"
+    echo "    -u    git repository url"
+    echo "    -c    clean up temp directories and clusters before running the tests"
+    echo "    -x    clean up temp directories and clusters then exit"
+    exit 1
+}
+
+verify_deps() {
+  if ! command -v rsync >/dev/null 2>&1; then
+    red "rsync is missing" >&2
+    exit 2
+  fi
+
+  if ! command -v flux >/dev/null 2>&1; then
+    red "flux is missing" >&2
+    exit 2
+  fi
+
+  if ! command -v kind  >/dev/null 2>&1; then
+    red "kind is missing" >&2
+    exit 2
+  fi
+
+  if ! command -v kubectl  >/dev/null 2>&1; then
+    red "kubectl is missing" >&2
+    exit 2
+  fi
+
+  if ! command -v kustomize  >/dev/null 2>&1; then
+    red "kustomize is missing" >&2
+    exit 2
+  fi
+}
+
+create_git_repository() {
+  RUN_TMP=$DATA_DIR/run/tmp
+  GIT_DIR=$RUN_TMP/git
+  KIND_GIT_DIR=$DATA_DIR/kind/git
+  REMOTE_GIT_DIR=$KIND_GIT_DIR/.git
+  set -e
+  if [[ ! -d $GIT_DIR ]]; then
+    green "git clone $RUN_ROOT/.git $GIT_DIR"
+    git clone $RUN_ROOT/.git $GIT_DIR
+    cd $GIT_DIR
+    green "git set origin remote url"
+    git remote set-url origin $REMOTE_GIT_DIR
+  fi
+  cd $GIT_DIR
+  green "copy changes"
+  rsync \
+    --archive \
+    --hard-links \
+    --delete \
+    --exclude=test/.data \
+    --exclude=test/.testdata \
+    --exclude=test/.bats \
+    --exclude=.git \
+    $RUN_ROOT/ \
+    $GIT_DIR/
+  green "ensure clusters/$CLUSTER directory exist"
+  mkdir -p clusters/$CLUSTER # The test will timeout without at least a cluster/$CLUSTER folder
+  touch clusters/$CLUSTER/.keep
+  if [[ ! "$(git rev-parse --verify --end-of-options $BRANCH 2>/dev/null)" ]]; then
+    green "git checkout"
+    git checkout -b $BRANCH
+  fi
+  green "git add to stage"
+  git add -A
+  green "git commit"
+  git commit -m "Changes made $(date)" || : # If no changes ignore the error
+  if [[ -d $REMOTE_GIT_DIR ]]; then
+    ## Merge changes upstream
+    #green "git fetch origin"
+    #git fetch origin
+    #green "git set upstream"
+    #git branch --set-upstream-to=origin/$BRANCH
+    #green "git pull"
+    #git pull
+    green "replace gitsrv git repository"
+    set +e
+    rm -rf $REMOTE_GIT_DIR
+    if [[ "$?" -eq 0 ]]; then
+      set -e
+      cp -r $GIT_DIR/.git $KIND_GIT_DIR
+      chown -R 1000:1000 $REMOTE_GIT_DIR
+    else
+      set -e
+      #sudo -k # kill the session when testing dangerous command
+      green "sudo bash -c \ \n  \"rm -rf $REMOTE_GIT_DIR \ \n  && cp -r $GIT_DIR/.git $KIND_GIT_DIR \ \n  && chown -R 1000:1000 $REMOTE_GIT_DIR\""
+      sudo bash -c "rm -rf $REMOTE_GIT_DIR && cp -r $GIT_DIR/.git $KIND_GIT_DIR && chown -R 1000:1000 $REMOTE_GIT_DIR"
+    fi
+  else
+    green "create $KIND_GIT_DIR"
+    mkdir -p $KIND_GIT_DIR
+    green "copy git repository from temp to gitsrv"
+    cp --recursive $GIT_DIR/.git $KIND_GIT_DIR
+  fi
+  cd $RUN_ROOT
+  set +e
+}
+
+run_tests() {
+  green "running bats tests"
+  DEFAULT="--verbose-run"
+  OPS_NS=$OPS_NS \
+  CLIENT_NS="$CLIENT_NS" \
+  KIND_IMAGE="$KIND_IMAGE" \
+  GIT_REPO=$GIT_REPO \
+  BRANCH=$BRANCH \
+  CLUSTER=$CLUSTER \
+  set -x
+  bats $DEFAULT "${FILTER[@]}" \
+    test/run.bats \
+    test/linter.bats \
+    test/kind.bats \
+    test/gitsrv.bats \
+    test/flux.bats
+}
+
+clean() {
+  kind get clusters | xargs -I{} kind delete cluster --name {}
+  green "rm -rf $DATA_DIR"
+  rm -rf $DATA_DIR
+  if [[ "$?" -ne 0 ]]; then
+    green "sudo rm -rf $DATA_DIR"
+    #sudo -k # kill the session when testing dangerous command
+    sudo rm -rf $DATA_DIR
+  fi
+}
+
+main () {
+  if [[ ! -z "$c" ]]; then
+    clean
+    if [[ ! -z "$x" ]]; then
+      exit 0
+    fi
+  fi
+  verify_deps
+  create_git_repository
+  run_tests
+}
+
+c=""
+x=""
+[[ -z "$BRANCH" ]] && BRANCH="test"
+[[ -z "$CLUSTER" ]] && CLUSTER="my-cluster"
+[[ -z "$GIT_REPO" ]] && GIT_REPO="ssh://git@gitsrv.$OPS_NS.svc.cluster.local/git-server/repos/gitops.git"
+[[ -z "$RUN_ROOT" ]] && RUN_ROOT="$( cd "$( dirname "$0" )/.." >/dev/null 2>&1 && pwd )"
+[[ -z "$DATA_DIR" ]] && DATA_DIR=$RUN_ROOT/test/.data
+PATH="$PATH:$RUN_ROOT/test/bats/bin"
+FILTER=()
+set -u
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+
+  while getopts ':h:f:b:n:u:cx' flag; do
+    case "${flag}" in
+      h)  usage
+          exit 0;;
+      f)
+          FILTER=(-f "${OPTARG}")
+          ;;
+      b)
+          BRANCH=${OPTARG}
+          ;;
+      n)
+          CLUSTER=${OPTARG}
+          ;;
+      u)
+          GIT_REPOu=${OPTARG}
+          ;;
+      c)
+          c="true"
+          ;;
+      x)
+          c="true"
+          x="true"
+          ;;
+      *)  usage
+          exit 1 ;;
+    esac
+  done
+
+  main
+fi
+
